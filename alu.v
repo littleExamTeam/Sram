@@ -6,17 +6,53 @@ module alu(
     input wire [31:0] x,//SrcAE
     input wire [31:0] y,//SrcBE
     output reg [31:0] result,
-    output wire zero
+    output wire zero,
+    output reg overflow //TODO:记得修改通路中的ALU
     );
+
+
+    reg [32:0] resultForBool;
 
     always @(*)
     begin
+        overflow <= 1'b0;
         case(aluControl)
-            `EXE_ADD_OP: begin result <= x + y;end  //加法
-            `EXE_ADDI_OP: begin result <= x + y;end //减法
+            `EXE_ADD_OP: begin 
+                //result <= x + y;
+                resultForBool <= x + y;
+                if(resultForBool[32] == resultForBool[31]) begin 
+                    overflow <= 1'b1;
+                end else begin
+                    overflow <= 1'b0;
+                    result <= x + y;
+                end
+            end  //加法
+
+            `EXE_ADDI_OP: begin 
+                //result <= x + y;
+                resultForBool <= x + y;
+                if(resultForBool[32] == resultForBool[31]) begin 
+                    overflow <= 1'b1;
+                end else begin
+                    overflow <= 1'b0;
+                    result <= x + y;
+                end
+            end //减法
+
             `EXE_ADDU_OP: begin result <= x + y;end //无符号数加法
             `EXE_ADDIU_OP: begin result <= x + y;end //无符号立即数加法
-            `EXE_SUB_OP: begin result <= x - y;end  //减法
+
+
+            `EXE_SUB_OP: begin 
+                //result <= x - y;
+                resultForBool <= x - y;
+                if(resultForBool[32] == resultForBool[31]) begin 
+                    overflow <= 1'b1;
+                end else begin
+                    overflow <= 1'b0;
+                    result <= x - y;
+                end
+            end  //减法
             `EXE_SUBU_OP: begin result <= x - y;end //无符号数减法
 
             `EXE_SLT_OP: begin 
