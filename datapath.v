@@ -33,6 +33,8 @@ module datapath(
     input  wire       SignD,
     input  wire       StartDivD,
     input  wire       AnnulD,
+    //--exc--
+    input  wire       NoInst;
     //-----------------------------------------------
 
     //-----mem stage---------------------------------
@@ -53,10 +55,13 @@ module datapath(
     //-----------------------------------------------
 );
 wire [31:0] PC;
-
 //-----fetch stage-----------------------------------
 wire [31:0] PCPlus4F;
 wire StallF;
+//--exc--
+wire [7:0] ExceptF;
+wire Adel1F;
+wire IsSlotF;
 //---------------------------------------------------
 
 
@@ -89,6 +94,10 @@ wire [1:0]  ForwardHILOBED, ForwardHILOBMD;
 wire [1:0]  ForwardHILOJED, ForwardHILOJMD;
 //wire [1:0]  ForwardALD;
 wire        StallD, FlushD;
+//--exc--
+wire [7:0] ExceptD;
+wire Adel1D, IsSlotD;
+wire Break, Syscall;
 //-------------------------------------------------------
 
 
@@ -138,6 +147,10 @@ wire [1:0] ForwardAE, ForwardBE;
 wire [1:0] ForwardHIE, ForwardLOE;
 wire [1:0] ForwardMultE, ForwardDivE;
 wire FlushE, StallE;
+//--exc--
+wire [7:0] ExceptE;
+wire Adel1E, IsSlotE;
+wire Overflow;
 //----------------------------------------------------------
 
 
@@ -168,6 +181,10 @@ wire [31:0] FinalDataM;
 wire [31:0] RegDataM;
 //--harzard--
 wire StallM;
+//--exc--
+wire [7:0] ExceptM;
+wire IsSlotM;
+wire Adel1M, Adel2M, AdelM, AdeSM;
 //----------------------------------------------------------
 
 
@@ -199,6 +216,10 @@ mux3 #(32) PCMux(PCPlus4F, PCBranchD, PCJumpD, PCSrcD, PC);
 //-----fetch stage------------------------------------------
 pc #(32) PCReg(clk, rst, ~StallF, PC, PCF);
 adder PCAdder(PCF, 32'b100, PCPlus4F);
+//--exc--
+assign Adel1F = (PCF[1:0] == 2'b00) ? 1'b0 : 1'b1;
+assign IsSlotF = BranchSignal | JumpSignal;
+assign ExceptF[7] = Adel1F;
 //----------------------------------------------------------
 
 
@@ -206,6 +227,8 @@ adder PCAdder(PCF, 32'b100, PCPlus4F);
 flopenrc #(32)D1(clk, rst, ~StallD, FlushD, InstF, InstD);
 flopenrc #(32)D2(clk, rst, ~StallD, FlushD, PCPlus4F, PCPlus4D);
 flopenrc #(32)D3(clk, rst, ~StallD, FlushD, PCF, PCD);
+//--exc--
+flopenrc #(10)D4(clk, rst, ~StallD, FlushD, {ExceptF, Adel1F, IsSlotF}, {ExceptD, Adel1D, IsSlotD});
 
 assign Op    = InstD[31:26];
 assign RsD   = InstD[25:21];
@@ -254,6 +277,13 @@ mux2 #(32)ForwardJr(DataAD, ALUOutM, ForwardJrD, TempJumpAddr1);
 mux3 #(32)HILOJEMux(TempJumpAddr1, NewHIDataE, NewLODataE, ForwardHILOJED, TempJumpAddr2);
 mux3 #(32)HILOJMMux(TempJumpAddr2, HIDataM, LODataM, ForwardHILOJMD, ForwardJumpAddr);
 mux2 #(32)JumpMux({PCPlus4D[31:28], ExJumpAddr}, ForwardJumpAddr, JrD, PCJumpD);
+//--exc--
+assign Syscall = (Op == 6'b000000) & (Funct == 6'b001100);
+assign Break   = (Op == 6'b000000) & (Funct == 6'b001101);
+
+assign ExceptD[6] = Syscall;
+assign ExceptD[5] = Break;
+assign ExceptD[3] = NoInst;
 //-------------------------------------------------------------
 
 
@@ -276,6 +306,8 @@ flopenrc #(32)E10(clk, rst, ~StallE, FlushE, HIDataD, HIDataE);
 flopenrc #(32)E11(clk, rst, ~StallE, FlushE, LODataD, LODataE);
 flopenrc #(32)E12(clk, rst, ~StallE, FlushE, PCPlus8D, PCPlus8E);
 flopenrc #(32)E13(clk, rst, ~StallE, FlushE, PCD, PCE);
+//--exc--
+flopenrc #(10)E14(clk, rst, ~StallE, FlushE, {ExceptD, Adel1D, IsSlotD}, {ExceptE, Adel1E, IsSlotE});
 //--alu forwarding--
 mux2  #(5) RegMux1(RtE, RdE, RegDstE, WriteRegTemp);
 mux3 #(32) ForwardAMux(DataAE, ResultW, ALUOutM, ForwardAE, RegValue);
@@ -299,6 +331,8 @@ alu Alu(ALUControlE, SrcAE, SrcBE, ALUOutTemp);
 my_mul Mult(SrcAE, SrcBE, SignE, {MultHIE, MultLOE});
 wire DivStart = StartDivE & ~ DivReadyE;
 div Div(clk, rst, SignE, SrcAE, SrcBE, DivStart, AnnulE, {DivHIE, DivLOE}, DivReadyE);
+//--exc--
+assign ExceptE[2] = Overflow;
 //-----------------------------------------------------------
 
 
@@ -317,6 +351,11 @@ flopenr #(32)M8(clk, rst, ~StallM, MultLOE, MultLOM);
 flopenr #(32)M9(clk, rst, ~StallM, DivHIE, DivHIM);
 flopenr#(32)M10(clk, rst, ~StallM, DivLOE, DivLOM);
 flopenr#(32)M11(clk, rst, ~StallM, PCE, PCM);
+//--exc--
+flopenr#(10)M12(clk, rst, ~StallM, {ExceptE, Adel1E, IsSlotE}, {ExceptM, Adel1M, IsSlotM});
+//--exc--
+
+
 assign MemEn = DatatoRegM[0] & DatatoRegM[1] | MemWriteM;
 ByteSel BS(ALUOutM, RegDataM, ALUControlM, Sel, WriteDataM);
 GetReadData GRD(ALUOutM, ReadDataM, ALUControlM, FinalDataM);
