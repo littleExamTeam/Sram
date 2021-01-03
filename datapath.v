@@ -1,0 +1,395 @@
+`timescale 1ns / 1ps
+module datapath(
+    input wire clk, rst,
+
+    //-----fetch stage-------------------------------
+    //--to sram--
+    output wire[31:0] PCF,
+    input  wire[31:0] InstF,
+    //-----------------------------------------------
+
+    //-----decode stage------------------------------
+    output wire [5:0] Op,
+    output wire [5:0] Funct,
+    output wire [4:0] Rt,
+    //--signals--
+    input  wire       RegWriteD,
+    input  wire [1:0] DatatoRegD,
+    input  wire       MemWriteD,
+    input  wire [7:0] ALUControlD,
+    input  wire       ALUSrcAD,
+    input  wire [1:0] ALUSrcBD,
+    input  wire       RegDstD,
+    input  wire       JumpD,
+    input  wire       BranchD,
+    input  wire       JalD,
+    input  wire       JrD,
+    input  wire       BalD,
+
+    input  wire       HIWriteD,
+    input  wire       LOWriteD,
+    input  wire [1:0] DatatoHID,
+    input  wire [1:0] DatatoLOD,
+    input  wire       SignD,
+    input  wire       StartDivD,
+    input  wire       AnnulD,
+    //-----------------------------------------------
+
+    //-----mem stage---------------------------------
+    //--to sram--
+    output wire        MemEn,
+    output wire [3:0]  Sel,
+    output wire [31:0] ALUOutM,
+    output wire [31:0] WriteDataM,
+    input  wire [31:0] ReadDataM,
+    //-----------------------------------------------
+
+    //-----write back stage--------------------------
+    //--to sram--
+    output wire [31:0] PCW,
+    output wire        RegWriteW,
+    output wire [4:0]  WriteRegW,
+    output wire [31:0] ResultW
+    //-----------------------------------------------
+);
+wire [31:0] PC;
+
+//-----fetch stage-----------------------------------
+wire [31:0] PCPlus4F;
+wire StallF;
+//---------------------------------------------------
+
+
+//-----decode stage----------------------------------
+wire [31:0] InstD;
+wire [31:0] PCD;
+//--signal--
+wire [1:0]  PCSrcD;
+wire        JumpSignal;
+wire        BranchSignal;
+//--addr--
+wire [31:0] PCPlus4D, PCBranchD, PCJumpD;
+wire [31:0] PCPlus8D;
+wire [31:0] ForwardJumpAddr;
+wire [27:0] ExJumpAddr;
+//--imm--
+wire [31:0] SignImmD, ExSignImmD, ZeroImmD, SaD;
+//--data--
+wire [31:0] HIIn,HIDataD;
+wire [31:0] LOIn,LODataD;
+wire [31:0] DataAD, DataBD;
+//--regs info--
+wire [4:0]  RsD, RtD, RdD;
+//--hazard handle--
+wire [31:0] CmpA, CmpB;
+wire        EqualD;
+wire        ForwardAD, ForwardBD, ForwardJrD;
+wire [1:0]  ForwardHILOAED, ForwardHILOAMD;
+wire [1:0]  ForwardHILOBED, ForwardHILOBMD;
+wire [1:0]  ForwardHILOJED, ForwardHILOJMD;
+//wire [1:0]  ForwardALD;
+wire        StallD, FlushD;
+//-------------------------------------------------------
+
+
+//-----excute stage--------------------------------------
+wire [31:0] PCE;
+//--signals--
+wire       RegWriteE;
+wire [1:0] DatatoRegE;
+wire       MemWriteE;
+wire [7:0] ALUControlE;
+wire       ALUSrcAE;
+wire [1:0] ALUSrcBE;
+wire       RegDstE;
+wire       JalE;
+wire       JrE;
+wire       BalE;
+
+wire       HIWriteE;
+wire       LOWriteE;
+wire [1:0] DatatoHIE;
+wire [1:0] DatatoLOE;
+wire       SignE;
+wire       StartDivE;
+wire       AnnulE;
+//--imm--
+wire [31:0] SignImmE, ZeroImmE, SaE;
+//--data--
+wire [31:0] DataAE, DataBE;
+wire [31:0] HIDataE, TempHIData1E, TempHIData2E, NewHIDataE;
+wire [31:0] LODataE, TempLOData1E, TempLOData2E, NewLODataE;
+//--regs info--
+wire  [4:0] RsE, RtE, RdE;
+wire  [4:0] WriteRegE;
+wire  [4:0] WriteRegTemp;
+//--alu src--
+wire [31:0] SrcAE, SrcBE, ALUOutE;
+wire [31:0] RegValue;
+wire [31:0] WriteDataE;
+wire [31:0] ALUOutTemp;
+wire [31:0] PCPlus8E;
+//--mult div--
+wire [31:0] MultHIE, MultLOE;
+wire [31:0] DivHIE, DivLOE;
+wire DivReadyE;
+//--hazard handle--
+wire [1:0] ForwardAE, ForwardBE;
+wire [1:0] ForwardHIE, ForwardLOE;
+wire [1:0] ForwardMultE, ForwardDivE;
+wire FlushE, StallE;
+//----------------------------------------------------------
+
+
+//-----mem stage--------------------------------------------
+wire [31:0] PCM;
+//--signals--
+wire       RegWriteM;
+wire [1:0] DatatoRegM;
+wire       MemWriteM;
+wire [7:0] ALUControlM;
+wire       JalM;
+wire       BalM;
+wire       HIWriteM;
+wire       LOWriteM;
+wire [1:0] DatatoHIM;
+wire [1:0] DatatoLOM;
+//--data--
+wire [31:0] HIDataM;
+wire [31:0] LODataM;
+//--mult div--
+wire [31:0] MultHIM, MultLOM;
+wire [31:0] DivHIM, DivLOM;
+//--regs info--
+wire [4:0]  WriteRegM; 
+//--mem--
+//wire [3:0]  Sel;
+wire [31:0] FinalDataM;
+wire [31:0] RegDataM;
+//--harzard--
+wire StallM;
+//----------------------------------------------------------
+
+
+//-----writeback stage--------------------------------------
+//--signals
+wire [1:0] DatatoRegW;
+wire       HIWriteW;
+wire       LOWriteW;
+wire [1:0] DatatoHIW;
+wire [1:0] DatatoLOW;
+//--data--
+wire [31:0] ReadDataW;
+wire [31:0] HIDataW;
+wire [31:0] LODataW;
+wire [31:0] ALUOutW;
+//--mult div--
+wire [31:0] MultHIW, MultLOW;
+wire [31:0] DivHIW, DivLOW;
+//--harzard--
+wire StallW;
+//----------------------------------------------------------
+
+
+//-----next pc----------------------------------------------
+mux3 #(32) PCMux(PCPlus4F, PCBranchD, PCJumpD, PCSrcD, PC);
+//----------------------------------------------------------
+
+
+//-----fetch stage------------------------------------------
+pc #(32) PCReg(clk, rst, ~StallF, PC, PCF);
+adder PCAdder(PCF, 32'b100, PCPlus4F);
+//----------------------------------------------------------
+
+
+//-----decode stage-----------------------------------------
+flopenrc #(32)D1(clk, rst, ~StallD, FlushD, InstF, InstD);
+flopenrc #(32)D2(clk, rst, ~StallD, FlushD, PCPlus4F, PCPlus4D);
+flopenrc #(32)D3(clk, rst, ~StallD, FlushD, PCF, PCD);
+
+assign Op    = InstD[31:26];
+assign RsD   = InstD[25:21];
+assign RtD   = InstD[20:16];
+assign RdD   = InstD[15:11];
+assign Funct = InstD[5:0];
+assign Rt    = RtD;
+
+assign SaD = {27'b0, InstD[10:6]};
+
+assign JumpSignal   = JumpD | JalD | JrD;
+assign BranchSignal = BranchD | BalD;
+
+assign PCSrcD[0:0] = BranchSignal & EqualD;
+assign PCSrcD[1:1] = JumpSignal;
+
+//--regs--
+regfile Regs(clk, RegWriteW, RsD, RtD, WriteRegW, ResultW, DataAD, DataBD);
+hiloreg HILO(clk, rst, HIWriteW, LOWriteW, HIIn, LOIn, HIDataD, LODataD);
+//--barnch hazrad handle--
+wire [31:0] TempCmpA1, TempCmpA2;
+wire [31:0] TempCmpB1, TempCmpB2;
+mux2 #(32)DAMux(DataAD, ALUOutM, ForwardAD, TempCmpA1);
+mux3 #(32)HILOAEMux(TempCmpA1, NewHIDataE, NewLODataE, ForwardHILOAED, TempCmpA2);
+mux3 #(32)HILOAMMux(TempCmpA2, HIDataM, LODataM, ForwardHILOAMD, CmpA);
+mux2 #(32)DBMux(DataBD, ALUOutM, ForwardBD, TempCmpB1);
+mux3 #(32)HILOBEMux(TempCmpB1, NewHIDataE, NewLODataE, ForwardHILOBED, TempCmpB2);
+mux3 #(32)HILOBMMux(TempCmpB2, HIDataM, LODataM, ForwardHILOBMD, CmpB);
+eqcmp Cmp(CmpA, CmpB, Op, RtD, EqualD);
+
+//assign FlushD = PCSrcD[0:0] | PCSrcD[1:1];
+assign FlushD = 1'b0;
+//--ext imm--
+signext Se(InstD[15:0], SignImmD);
+zeroext Ze(InstD[15:0], ZeroImmD);
+//--sl--
+sl2 #(32) Sl2Imm(SignImmD, ExSignImmD);
+//--branch addr--
+adder BranchAdder(PCPlus4D, ExSignImmD, PCBranchD);
+adder PCPlus8(PCPlus4D, 32'b100, PCPlus8D);
+//--jump addr--
+assign ExJumpAddr = {InstD[25:0], 2'b00};
+//mux3 #(32)ForwardAL(DataAD, PCPlus8E, ALUOutM, ForwardALD, ForwardJumpAddr);
+wire [31:0] TempJumpAddr1, TempJumpAddr2;
+mux2 #(32)ForwardJr(DataAD, ALUOutM, ForwardJrD, TempJumpAddr1);
+mux3 #(32)HILOJEMux(TempJumpAddr1, NewHIDataE, NewLODataE, ForwardHILOJED, TempJumpAddr2);
+mux3 #(32)HILOJMMux(TempJumpAddr2, HIDataM, LODataM, ForwardHILOJMD, ForwardJumpAddr);
+mux2 #(32)JumpMux({PCPlus4D[31:28], ExJumpAddr}, ForwardJumpAddr, JrD, PCJumpD);
+//-------------------------------------------------------------
+
+
+//-----excute stage---------------------------------------------
+//TODO:change the bits of signal
+flopenrc   #(28)E1(clk, rst, ~StallE, FlushE,
+    {RegWriteD,DatatoRegD,MemWriteD,ALUControlD,ALUSrcAD,ALUSrcBD,RegDstD,
+    JalD,JrD,BalD,HIWriteD,LOWriteD,DatatoHID,DatatoLOD,SignD,StartDivD,AnnulD},
+    {RegWriteE,DatatoRegE,MemWriteE,ALUControlE,ALUSrcAE,ALUSrcBE,RegDstE,
+    JalE,JrE,BalE,HIWriteE,LOWriteE,DatatoHIE,DatatoLOE,SignE,StartDivE,AnnulE});
+flopenrc  #(32)E2(clk, rst, ~StallE, FlushE, DataAD, DataAE);
+flopenrc  #(32)E3(clk, rst, ~StallE, FlushE, DataBD, DataBE);
+flopenrc   #(5)E4(clk, rst, ~StallE, FlushE, RsD, RsE);
+flopenrc   #(5)E5(clk, rst, ~StallE, FlushE, RtD, RtE);
+flopenrc   #(5)E6(clk, rst, ~StallE, FlushE, RdD, RdE);
+flopenrc  #(32)E7(clk, rst, ~StallE, FlushE, SignImmD, SignImmE);
+flopenrc  #(32)E8(clk, rst, ~StallE, FlushE, ZeroImmD, ZeroImmE);
+flopenrc  #(32)E9(clk, rst, ~StallE, FlushE, SaD, SaE);
+flopenrc #(32)E10(clk, rst, ~StallE, FlushE, HIDataD, HIDataE);
+flopenrc #(32)E11(clk, rst, ~StallE, FlushE, LODataD, LODataE);
+flopenrc #(32)E12(clk, rst, ~StallE, FlushE, PCPlus8D, PCPlus8E);
+flopenrc #(32)E13(clk, rst, ~StallE, FlushE, PCD, PCE);
+//--alu forwarding--
+mux2  #(5) RegMux1(RtE, RdE, RegDstE, WriteRegTemp);
+mux3 #(32) ForwardAMux(DataAE, ResultW, ALUOutM, ForwardAE, RegValue);
+mux3 #(32) ForwardBMux(DataBE, ResultW, ALUOutM, ForwardBE, WriteDataE);
+//--alu src--
+mux2 #(32) AluSrcAMux(RegValue, SaE, ALUSrcAE, SrcAE);
+mux3 #(32) AluSrcBMux(WriteDataE, SignImmE, ZeroImmE, ALUSrcBE, SrcBE);
+//--hilo forwarding--
+mux3 #(32) ForwardHIMux(HIDataE, ALUOutM, ResultW, ForwardHIE, TempHIData1E);
+mux3 #(32) ForwardHIMultMux(TempHIData1E, MultHIM, MultHIW, ForwardMultE, TempHIData2E);
+mux3 #(32) ForwardHIDivMux(TempHIData2E, DivHIM, DivHIW, ForwardDivE, NewHIDataE);
+
+mux3 #(32) ForwardLOMux(LODataE, ALUOutM, ResultW, ForwardLOE, TempLOData1E);
+mux3 #(32) ForwardLOMultMux(TempLOData1E, MultLOM, MultLOW, ForwardMultE, TempLOData2E);
+mux3 #(32) ForwardLODivMux(TempLOData2E, DivLOM, DivLOW, ForwardDivE, NewLODataE);
+//--branch jump--
+mux2 #(5) RegMux2(WriteRegTemp, 5'b11111, JalE | BalE, WriteRegE);
+mux2 #(32) ALUMux(ALUOutTemp, PCPlus8E, JalE | JrE | BalE, ALUOutE);
+//--ari--
+alu Alu(ALUControlE, SrcAE, SrcBE, ALUOutTemp);
+my_mul Mult(SrcAE, SrcBE, SignE, {MultHIE, MultLOE});
+wire DivStart = StartDivE & ~ DivReadyE;
+div Div(clk, rst, SignE, SrcAE, SrcBE, DivStart, AnnulE, {DivHIE, DivLOE}, DivReadyE);
+//-----------------------------------------------------------
+
+
+//-----mem stage---------------------------------------------
+//TODO:change the bits of signal
+flopenr  #(20)M1(clk, rst, ~StallM,
+    {RegWriteE,DatatoRegE,MemWriteE,ALUControlE,JalE,BalE,HIWriteE,LOWriteE,DatatoHIE,DatatoLOE},
+    {RegWriteM,DatatoRegM,MemWriteM,ALUControlM,JalM,BalM,HIWriteM,LOWriteM,DatatoHIM,DatatoLOM});
+flopenr #(32)M2(clk, rst, ~StallM, ALUOutE, ALUOutM);
+flopenr #(32)M3(clk, rst, ~StallM, WriteDataE, RegDataM);
+flopenr  #(5)M4(clk, rst, ~StallM, WriteRegE, WriteRegM);
+flopenr #(32)M5(clk, rst, ~StallM, NewHIDataE, HIDataM);
+flopenr #(32)M6(clk, rst, ~StallM, NewLODataE, LODataM);
+flopenr #(32)M7(clk, rst, ~StallM, MultHIE, MultHIM);
+flopenr #(32)M8(clk, rst, ~StallM, MultLOE, MultLOM);
+flopenr #(32)M9(clk, rst, ~StallM, DivHIE, DivHIM);
+flopenr#(32)M10(clk, rst, ~StallM, DivLOE, DivLOM);
+flopenr#(32)M11(clk, rst, ~StallM, PCE, PCM);
+assign MemEn = DatatoRegM[0] & DatatoRegM[1] | MemWriteM;
+ByteSel BS(ALUOutM, RegDataM, ALUControlM, Sel, WriteDataM);
+GetReadData GRD(ALUOutM, ReadDataM, ALUControlM, FinalDataM);
+//------------------------------------------------------------
+
+
+//-----writeback stage----------------------------------------
+//TODO:change the bits of signal
+flopenr  #(9)W1(clk, rst, ~StallW,
+    {RegWriteM,DatatoRegM,HIWriteM,LOWriteM,DatatoHIM,DatatoLOM},
+    {RegWriteW,DatatoRegW,HIWriteW,LOWriteW,DatatoHIW,DatatoLOW});
+flopenr #(32)W2(clk, rst, ~StallW, FinalDataM, ReadDataW);
+flopenr #(32)W3(clk, rst, ~StallW, ALUOutM, ALUOutW);
+flopenr  #(5)W4(clk, rst, ~StallW, WriteRegM, WriteRegW);
+flopenr #(32)W5(clk, rst, ~StallW, HIDataM, HIDataW);
+flopenr #(32)W6(clk, rst, ~StallW, LODataM, LODataW);
+flopenr #(32)W7(clk, rst, ~StallW, MultHIM, MultHIW);
+flopenr #(32)W8(clk, rst, ~StallW, MultLOM, MultLOW);
+flopenr #(32)W9(clk, rst, ~StallW, DivHIM, DivHIW);
+flopenr #(32)W10(clk, rst, ~StallW, DivLOM, DivLOW);
+flopenr #(32)W11(clk, rst, ~StallW, PCM, PCW);
+
+mux4 #(32) DatatoRegMux (ALUOutW, LODataW, HIDataW, ReadDataW, DatatoRegW, ResultW);
+mux3 #(32) DatatoHIMux  (ALUOutW, MultHIW, DivHIW, DatatoHIW, HIIn);
+mux3 #(32) DatatoLOMux  (ALUOutW, MultLOW, DivLOW, DatatoLOW, LOIn);
+//------------------------------------------------------------
+
+
+//hazard
+hazard h(
+    //fetch stage
+    StallF,
+    //decode stage
+    RsD, RtD,
+    BranchD,
+    DatatoRegD,
+    JrD,
+
+    StallD,
+    ForwardAD, ForwardBD, ForwardJrD,
+    ForwardHILOAED, ForwardHILOAMD,
+    ForwardHILOBED, ForwardHILOBMD,
+    ForwardHILOJED, ForwardHILOJMD,
+    //ForwardALD,
+    //excute stage
+    RsE, RtE,
+    WriteRegE,
+    DatatoRegE,
+    RegWriteE,
+    JalE, BalE,
+
+    StartDivE,
+    DivReadyE,
+
+    FlushE, StallE,
+    ForwardAE, ForwardBE,
+    ForwardHIE, ForwardLOE,
+    ForwardMultE, ForwardDivE,
+    //mem stage
+    WriteRegM,
+    DatatoRegM,
+    RegWriteM,
+    HIWriteM, LOWriteM,
+    DatatoHIM, DatatoLOM,
+    JalM, BalM,
+    StallM,
+    //writeback stage
+    WriteRegW,
+    DatatoRegW,
+    RegWriteW,
+    HIWriteW, LOWriteW,
+    DatatoHIW, DatatoLOW,
+    StallW
+);
+
+endmodule
