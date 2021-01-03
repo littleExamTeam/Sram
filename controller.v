@@ -21,8 +21,12 @@ module main_dec(
 //=====新加的关于跳转的指令=====
     output wire jal,
     output wire jr,
-    output wire bal
+    output wire bal,
 //=====新加的关于跳转的指令===== 
+
+//=====异常添加的指令==========
+    output reg Invalid  //1: 证明指令不在我们规划中 0：代表指令存在
+//=====异常添加的指令==========
 
 );
 
@@ -47,7 +51,7 @@ assign {regwrite, DatatoReg[1:0], memwrite, alusrcA ,{alusrcB[1:1]}, {alusrcB[0:
 
 
 always @(*) begin
-
+    Invalid <= 1'b0;
     case(op)
     //     `EXE_NOP: begin    //R-type
     //     signals <= 8'b011 000;
@@ -59,6 +63,9 @@ always @(*) begin
             `EXE_SLL:signals <= 22'b1_00_0_1_00_1_0_0_0_0_00_00_000_000;
             `EXE_SRA:signals <= 22'b1_00_0_1_00_1_0_0_0_0_00_00_000_000;
             `EXE_SRL:signals <= 22'b1_00_0_1_00_1_0_0_0_0_00_00_000_000;
+            `EXE_SLLV:signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_SRAV:signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_SRLV:signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
 //=====move Position===
 
 //=====HILO============
@@ -69,18 +76,32 @@ always @(*) begin
 //=====HILO============
 //{regwrite, DatatoReg[1:0], memwrite, alusrcA ,{alusrcB[1:1]}, {alusrcB[0:0]}, regdst, jump, branch,HIwrite,LOwrite,DataToHI,DataToLO} = signals;
 //=====ARI=============
+            `EXE_ADD: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_ADDU: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_SUB: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_SUBU: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_SLT: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_SLTU: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+
             `EXE_DIV:signals <= 22'b0_00_0_0_00_1_0_0_1_1_10_10_110_000;
             `EXE_DIVU:signals <= 22'b0_00_0_0_00_1_0_0_1_1_10_10_010_000;
             `EXE_MULT:signals <= 22'b0_00_0_0_00_1_0_0_1_1_01_01_100_000;
             `EXE_MULTU:signals <= 22'b0_00_0_0_00_1_0_0_1_1_01_01_000_000;
 //=====================
 
+//=====Logic===========
+            `EXE_NOR:signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_AND:signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_OR:signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            `EXE_XOR:signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+
+//=====Logic===========
 //======jump===========
             `EXE_JR: signals <= 22'b0_00_0_0_00_0_1_0_0_0_00_00_0_0_0_0_1_0;
             `EXE_JALR: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_0_0_0_0_1_0;
 //======jump===========
-            default: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
-
+            //default: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
+            default: Invalid <= 1'b1;
             
         endcase
     
@@ -117,6 +138,7 @@ always @(*) begin
                 `EXE_BLTZ:signals   <= 22'b0_00_0_0_00_0_0_1_0_0_00_00_0_0_0_0_0_0;
                 `EXE_BGEZAL:signals <= 22'b1_00_0_0_00_0_0_1_0_0_00_00_0_0_0_0_0_1;
                 `EXE_BLTZAL:signals <= 22'b1_00_0_0_00_0_0_1_0_0_00_00_0_0_0_0_0_1;
+                default: Invalid <= 1'b1;
             endcase
         end
 
@@ -139,14 +161,14 @@ always @(*) begin
         `EXE_SB:signals <= 22'b0_00_1_0_01_0_0_0_0_0_00_00_0_0_0_0_0_0;
         `EXE_SH:signals <= 22'b0_00_1_0_01_0_0_0_0_0_00_00_0_0_0_0_0_0;
         `EXE_SW:signals <= 22'b0_00_1_0_01_0_0_0_0_0_00_00_0_0_0_0_0_0;
-
-
 //======load&&save======
 
+        `EXE_SYSCALL: signals <= 22'b0;
+        `EXE_BREAK: signals <= 22'b0;
 
 
-        default:signals <= 22'b0_00_0_0_00_0_0_0_0_0_00_00_000_000;
-
+        //default:signals <= 22'b0_00_0_0_00_0_0_0_0_0_00_00_000_000;
+        default: Invalid <= 1'b1;
     endcase
 end
 

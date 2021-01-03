@@ -6,7 +6,9 @@ module ByteSel(
     input wire [31:0] data,
     input wire [7:0] ALUControl,
     output wire [3:0] sel,
-    output wire [31:0] dataOut
+    output wire [31:0] dataOut,
+    output reg ADEL,
+    output reg ADES
 );
 
 reg [3:0] select;
@@ -16,6 +18,8 @@ assign dataOut = dataout;
 
 always @(*)
 begin
+    ADEL <= 1'b0;
+    ADES <= 1'b0;
     case(ALUControl)
         `EXE_LB_OP:  begin
             select <= 4'b0000;
@@ -28,14 +32,17 @@ begin
         `EXE_LH_OP: begin
             select <= 4'b0000;
             dataout <= data;
+            if(addra[0] != 0) ADEL <= 1'b1;
         end
         `EXE_LHU_OP: begin
             select <= 4'b0000;
             dataout <= data;
+            if(addra[0] != 0) ADEL <= 1'b1;
         end
         `EXE_LW_OP: begin
             select <= 4'b0000;
             dataout <= data;
+            if(addra[1:0] != 2'b00) ADEL <= 1'b1;
         end
         `EXE_SB_OP: begin
             case(addra[1:0])
@@ -59,6 +66,7 @@ begin
         end
 
         `EXE_SH_OP: begin
+            if(addra[0] != 0) ADES <= 1'b1;
             case(addra[1:0])
                 2'b10: begin 
                     select <= 4'b1100;
@@ -73,6 +81,7 @@ begin
         `EXE_SW_OP: begin
             select <= 4'b1111;
             dataout <= data;
+            if(addra[1:0] != 2'b00) ADES <= 1'b1;
         end
         default: begin
             select <= 4'b0000;
