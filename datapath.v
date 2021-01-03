@@ -1,4 +1,14 @@
 `timescale 1ns / 1ps
+
+
+//TODO: 1.4 要做的事情
+//1.把cp0放在通路外面，读值在第二周期，存值在第五周期
+//2.exception得到异常地址
+//3.except八位后两位分别是ADEL，ADES
+//4.有异常需要刷新流水线
+//5.syscall后面接上div就会有问题 需要改一下pc接口那里
+//6.int_i 这里是硬件中断
+
 module datapath(
     input wire clk, rst,
 
@@ -327,7 +337,7 @@ mux3 #(32) ForwardLODivMux(TempLOData2E, DivLOM, DivLOW, ForwardDivE, NewLODataE
 mux2 #(5) RegMux2(WriteRegTemp, 5'b11111, JalE | BalE, WriteRegE);
 mux2 #(32) ALUMux(ALUOutTemp, PCPlus8E, JalE | JrE | BalE, ALUOutE);
 //--ari--
-alu Alu(ALUControlE, SrcAE, SrcBE, ALUOutTemp);
+alu Alu(ALUControlE, SrcAE, SrcBE, ALUOutTemp, Zero, Overflow);
 my_mul Mult(SrcAE, SrcBE, SignE, {MultHIE, MultLOE});
 wire DivStart = StartDivE & ~ DivReadyE;
 div Div(clk, rst, SignE, SrcAE, SrcBE, DivStart, AnnulE, {DivHIE, DivLOE}, DivReadyE);
@@ -354,11 +364,15 @@ flopenr#(32)M11(clk, rst, ~StallM, PCE, PCM);
 //--exc--
 flopenr#(10)M12(clk, rst, ~StallM, {ExceptE, Adel1E, IsSlotE}, {ExceptM, Adel1M, IsSlotM});
 //--exc--
+assign AdelM = Adel1M | Adel2M;
 
 
 assign MemEn = DatatoRegM[0] & DatatoRegM[1] | MemWriteM;
-ByteSel BS(ALUOutM, RegDataM, ALUControlM, Sel, WriteDataM);
+ByteSel BS(ALUOutM, RegDataM, ALUControlM, Sel, WriteDataM, Adel2M, AdeSM);
 GetReadData GRD(ALUOutM, ReadDataM, ALUControlM, FinalDataM);
+//--exc--
+
+
 //------------------------------------------------------------
 
 
