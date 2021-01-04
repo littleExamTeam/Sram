@@ -42,7 +42,11 @@ module hazard(
     input wire [1:0] DatatoHIM, DatatoLOM,
     input wire JalM, BalM,
     output wire StallM,
-
+    //exc
+    input wire ExcptSignal,
+    input wire [31:0] ExceptType,
+    input wire [31:0] EPCM,
+    output reg [31:0] NewPCM,
     //------------------------
 
     //writeback stage
@@ -227,6 +231,25 @@ assign StallE = DivStall;
 assign StallM = 1'b0;
 assign StallW = 1'b0;
 
-assign FlushE = LwStallD | BranchStallD | JumpStallD;
+assign FlushF = ExcptSignal;
+assign FlushD = ExcptSignal
+assign FlushE = LwStallD | BranchStallD | JumpStallD | ExcptSignal;
+assign FlushM = ExcptSignal;
 
+//EPC
+always @(*) begin
+    if(ExcpetType == 1'b1) begin
+        case(ExceptType)
+            32'h00000001: NewPCM <= 32'hbfc00380;
+            32'h00000004: NewPCM <= 32'hbfc00380;
+            32'h00000005: NewPCM <= 32'hbfc00380;
+            32'h00000008: NewPCM <= 32'hbfc00380;
+            32'h00000009: NewPCM <= 32'hbfc00380;
+            32'h0000000a: NewPCM <= 32'hbfc00380;
+            32'h0000000c: NewPCM <= 32'hbfc00380;
+            32'h0000000e: NewPCM <= EPCM;
+            default:;
+        endcase
+    end
+end
 endmodule

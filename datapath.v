@@ -21,7 +21,7 @@ module datapath(
     //-----decode stage------------------------------
     output wire [5:0] Op,
     output wire [5:0] Funct,
-    output wire [4:0] Rt,
+    output wire [4:0] Rt, Rs,
     //--signals--
     input  wire       RegWriteD,
     input  wire [1:0] DatatoRegD,
@@ -44,7 +44,8 @@ module datapath(
     input  wire       StartDivD,
     input  wire       AnnulD,
     //--exc--
-    input  wire       NoInst;
+    input  wire       NoInstD,
+    input  wire       Cp0WriteD, Cp0ReadD,
     //-----------------------------------------------
 
     //-----mem stage---------------------------------
@@ -166,6 +167,7 @@ wire Overflow;
 
 //-----mem stage--------------------------------------------
 wire [31:0] PCM;
+wire [31:0] EPCM;
 //--signals--
 wire       RegWriteM;
 wire [1:0] DatatoRegM;
@@ -192,9 +194,13 @@ wire [31:0] RegDataM;
 //--harzard--
 wire StallM;
 //--exc--
+wire [31:0] BadAddr;
+wire [31:0] Cp0DataM;
+wire [31:0] Cp0Status;
+wire [31:0] Cp0Cause;
 wire [7:0] ExceptM;
 wire IsSlotM;
-wire Adel1M, Adel2M, AdelM, AdeSM;
+wire Adel1M, Adel2M, AdelM, AdesM;
 //----------------------------------------------------------
 
 
@@ -215,6 +221,8 @@ wire [31:0] MultHIW, MultLOW;
 wire [31:0] DivHIW, DivLOW;
 //--harzard--
 wire StallW;
+//--exc--
+wire [31:0] Cp0DataW;
 //----------------------------------------------------------
 
 
@@ -256,8 +264,10 @@ assign PCSrcD[0:0] = BranchSignal & EqualD;
 assign PCSrcD[1:1] = JumpSignal;
 
 //--regs--
-regfile Regs(clk, RegWriteW, RsD, RtD, WriteRegW, ResultW, DataAD, DataBD);
+regfile Regs(clk, RegWriteW, RsD, RtD, WriteRegW, FinalResultW, DataAD, DataBD);
 hiloreg HILO(clk, rst, HIWriteW, LOWriteW, HIIn, LOIn, HIDataD, LODataD);
+
+mux2 #(32)Cp0Mux(ResultW, Cp0DataW, Cp0ReadW, FinalResultW);
 //--barnch hazrad handle--
 wire [31:0] TempCmpA1, TempCmpA2;
 wire [31:0] TempCmpB1, TempCmpB2;
@@ -290,20 +300,22 @@ mux2 #(32)JumpMux({PCPlus4D[31:28], ExJumpAddr}, ForwardJumpAddr, JrD, PCJumpD);
 //--exc--
 assign Syscall = (Op == 6'b000000) & (Funct == 6'b001100);
 assign Break   = (Op == 6'b000000) & (Funct == 6'b001101);
+assign Eret    = InstD == `EXE_ERET;
 
 assign ExceptD[6] = Syscall;
 assign ExceptD[5] = Break;
-assign ExceptD[3] = NoInst;
+assign ExceptD[4] = Eret;
+assign ExceptD[3] = NoInstD;
 //-------------------------------------------------------------
 
 
 //-----excute stage---------------------------------------------
 //TODO:change the bits of signal
-flopenrc   #(28)E1(clk, rst, ~StallE, FlushE,
-    {RegWriteD,DatatoRegD,MemWriteD,ALUControlD,ALUSrcAD,ALUSrcBD,RegDstD,
-    JalD,JrD,BalD,HIWriteD,LOWriteD,DatatoHID,DatatoLOD,SignD,StartDivD,AnnulD},
-    {RegWriteE,DatatoRegE,MemWriteE,ALUControlE,ALUSrcAE,ALUSrcBE,RegDstE,
-    JalE,JrE,BalE,HIWriteE,LOWriteE,DatatoHIE,DatatoLOE,SignE,StartDivE,AnnulE});
+flopenrc   #(30)E1(clk, rst, ~StallE, FlushE,
+    {RegWriteD,DatatoRegD,MemWriteD,ALUControlD,ALUSrcAD,ALUSrcBD,RegDstD,JalD,JrD,BalD,
+    HIWriteD,LOWriteD,DatatoHID,DatatoLOD,SignD,StartDivD,AnnulD,Cp0WriteD,Cp0ReadD},
+    {RegWriteE,DatatoRegE,MemWriteE,ALUControlE,ALUSrcAE,ALUSrcBE,RegDstE,JalE,JrE,BalE,
+    HIWriteE,LOWriteE,DatatoHIE,DatatoLOE,SignE,StartDivE,AnnulE,Cp0WriteE,Cp0ReadE});
 flopenrc  #(32)E2(clk, rst, ~StallE, FlushE, DataAD, DataAE);
 flopenrc  #(32)E3(clk, rst, ~StallE, FlushE, DataBD, DataBE);
 flopenrc   #(5)E4(clk, rst, ~StallE, FlushE, RsD, RsE);
@@ -348,49 +360,93 @@ assign ExceptE[2] = Overflow;
 
 //-----mem stage---------------------------------------------
 //TODO:change the bits of signal
-flopenr  #(20)M1(clk, rst, ~StallM,
-    {RegWriteE,DatatoRegE,MemWriteE,ALUControlE,JalE,BalE,HIWriteE,LOWriteE,DatatoHIE,DatatoLOE},
-    {RegWriteM,DatatoRegM,MemWriteM,ALUControlM,JalM,BalM,HIWriteM,LOWriteM,DatatoHIM,DatatoLOM});
-flopenr #(32)M2(clk, rst, ~StallM, ALUOutE, ALUOutM);
-flopenr #(32)M3(clk, rst, ~StallM, WriteDataE, RegDataM);
-flopenr  #(5)M4(clk, rst, ~StallM, WriteRegE, WriteRegM);
-flopenr #(32)M5(clk, rst, ~StallM, NewHIDataE, HIDataM);
-flopenr #(32)M6(clk, rst, ~StallM, NewLODataE, LODataM);
-flopenr #(32)M7(clk, rst, ~StallM, MultHIE, MultHIM);
-flopenr #(32)M8(clk, rst, ~StallM, MultLOE, MultLOM);
-flopenr #(32)M9(clk, rst, ~StallM, DivHIE, DivHIM);
-flopenr#(32)M10(clk, rst, ~StallM, DivLOE, DivLOM);
-flopenr#(32)M11(clk, rst, ~StallM, PCE, PCM);
+flopenrc  #(22)M1(clk, rst, ~StallM,,FlushM
+    {RegWriteE,DatatoRegE,MemWriteE,ALUControlE,JalE,BalE,
+    HIWriteE,LOWriteE,DatatoHIE,DatatoLOE,Cp0WriteE,Cp0ReadE},
+    {RegWriteM,DatatoRegM,MemWriteM,ALUControlM,JalM,BalM,
+    HIWriteM,LOWriteM,DatatoHIM,DatatoLOM,Cp0WriteM,Cp0ReadM});
+flopenrc #(32)M2(clk, rst, ~StallM, FlushM,ALUOutE, ALUOutM);
+flopenrc #(32)M3(clk, rst, ~StallM, FlushM,WriteDataE, RegDataM);
+flopenrc  #(5)M4(clk, rst, ~StallM, FlushM,WriteRegE, WriteRegM);
+flopenrc #(32)M5(clk, rst, ~StallM, FlushM,NewHIDataE, HIDataM);
+flopenrc #(32)M6(clk, rst, ~StallM, FlushM,NewLODataE, LODataM);
+flopenrc #(32)M7(clk, rst, ~StallM, FlushM,MultHIE, MultHIM);
+flopenrc #(32)M8(clk, rst, ~StallM, FlushM,MultLOE, MultLOM);
+flopenrc #(32)M9(clk, rst, ~StallM, FlushM,DivHIE, DivHIM);
+flopenrc#(32)M10(clk, rst, ~StallM, FlushM,DivLOE, DivLOM);
+flopenrc#(32)M11(clk, rst, ~StallM, FlushM,PCE, PCM);
 //--exc--
 flopenr#(10)M12(clk, rst, ~StallM, {ExceptE, Adel1E, IsSlotE}, {ExceptM, Adel1M, IsSlotM});
+flopenr #(5)M13(clk, rst, ~StallM, RdE, RdM);
+flopenr#(32)M14(clk, rst, ~StallM, Cp0DataM, Cp0DataW);
 //--exc--
 assign AdelM = Adel1M | Adel2M;
-
+assign ExceptM [4] = 1'b0;
+assign ExceptM [1] = AdelM;
+assign ExceptM [0] = AdesM;
+assign ExcptSignal = (ExceptM == 8'b0) ? 0 : 1;
+assign BadAddr = AdesM ? ALUOutM : PCM;
 
 assign MemEn = DatatoRegM[0] & DatatoRegM[1] | MemWriteM;
 ByteSel BS(ALUOutM, RegDataM, ALUControlM, Sel, WriteDataM, Adel2M, AdeSM);
 GetReadData GRD(ALUOutM, ReadDataM, ALUControlM, FinalDataM);
 //--exc--
+cp0_reg cp0(
+    .clk(clk), 
+    .rst(rst),
+    //TODO: signals
+    .we_i(Cp0WriteM), 
+    .waddr_i(RdM),
+    .raddr_i(RdM),
+    .data_i(WriteDataM),
 
+    .int_i(6'b0),
+    .excepttype_i(ExceptType),
+    .current_inst_addr_i(PCM),
+    .is_in_delayslot_i(IsSlotM),
+    .bad_addr_i(BadAddr),
 
+    .data_o(Cp0Data),
+    .count_o(),
+    .compare_o(),
+    .status_o(Cp0Status),
+    .cause_o(Cp0Cause),
+    .epc_o(EPCM),
+    .config_o(),
+    .prid_o(),
+
+    .badvaddr(),
+
+    .timer_int_o()
+);
+
+exception exc(
+    .rst(rst),
+    .except(ExceptM), 
+    .adel(AdelM),
+    .ades(AdeSM),
+    .cp0_states(Cp0Status),
+    .cp0_cause(Cp0Cause),
+    .excepttype(ExceptType)
+);
 //------------------------------------------------------------
 
 
 //-----writeback stage----------------------------------------
 //TODO:change the bits of signal
-flopenr  #(9)W1(clk, rst, ~StallW,
+flopenrc  #(9)W1(clk, rst, ~StallW, FlushW
     {RegWriteM,DatatoRegM,HIWriteM,LOWriteM,DatatoHIM,DatatoLOM},
     {RegWriteW,DatatoRegW,HIWriteW,LOWriteW,DatatoHIW,DatatoLOW});
-flopenr #(32)W2(clk, rst, ~StallW, FinalDataM, ReadDataW);
-flopenr #(32)W3(clk, rst, ~StallW, ALUOutM, ALUOutW);
-flopenr  #(5)W4(clk, rst, ~StallW, WriteRegM, WriteRegW);
-flopenr #(32)W5(clk, rst, ~StallW, HIDataM, HIDataW);
-flopenr #(32)W6(clk, rst, ~StallW, LODataM, LODataW);
-flopenr #(32)W7(clk, rst, ~StallW, MultHIM, MultHIW);
-flopenr #(32)W8(clk, rst, ~StallW, MultLOM, MultLOW);
-flopenr #(32)W9(clk, rst, ~StallW, DivHIM, DivHIW);
-flopenr #(32)W10(clk, rst, ~StallW, DivLOM, DivLOW);
-flopenr #(32)W11(clk, rst, ~StallW, PCM, PCW);
+flopenrc #(32)W2(clk, rst, ~StallW, FlushW, FinalDataM, ReadDataW);
+flopenrc #(32)W3(clk, rst, ~StallW, FlushW, ALUOutM, ALUOutW);
+flopenrc  #(5)W4(clk, rst, ~StallW, FlushW, WriteRegM, WriteRegW);
+flopenrc #(32)W5(clk, rst, ~StallW, FlushW, HIDataM, HIDataW);
+flopenrc #(32)W6(clk, rst, ~StallW, FlushW, LODataM, LODataW);
+flopenrc #(32)W7(clk, rst, ~StallW, FlushW, MultHIM, MultHIW);
+flopenrc #(32)W8(clk, rst, ~StallW, FlushW, MultLOM, MultLOW);
+flopenrc #(32)W9(clk, rst, ~StallW, FlushW, DivHIM, DivHIW);
+flopenrc #(32)W10(clk, rst, ~StallW, FlushW, DivLOM, DivLOW);
+flopenrc #(32)W11(clk, rst, ~StallW, FlushW, PCM, PCW);
 
 mux4 #(32) DatatoRegMux (ALUOutW, LODataW, HIDataW, ReadDataW, DatatoRegW, ResultW);
 mux3 #(32) DatatoHIMux  (ALUOutW, MultHIW, DivHIW, DatatoHIW, HIIn);

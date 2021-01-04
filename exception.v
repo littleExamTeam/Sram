@@ -54,8 +54,8 @@ always @(*) begin
             excepttype <= 32'h00000008;
         end else if(except[5] == 1'b1) begin //断点例外 - break
             excepttype <= 32'h00000009;
-        /*end else if(except[4] == 1'b1) begin 
-            excepttype <= 32'h0000000e;*/
+        end else if(except[4] == 1'b1) begin //eret
+            excepttype <= 32'h0000000e;
         end else if(except[3] == 1'b1) begin //保留指令例外
             excepttype <= 32'h0000000a;
         end else if(except[2] == 1'b1) begin //算数溢出例外

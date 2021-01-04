@@ -46,9 +46,12 @@ wire        SignD;
 wire        StartDivD;
 wire        AnnulD;
 
+wire        NoInst;
+wire        Cp0Write, Cp0Read;
+
 wire [5:0] Op;
 wire [5:0] Funct;
-wire [4:0] Rt;
+wire [4:0] Rt, Rs;
 
 wire [31:0] PCF, InstF;
 
@@ -66,7 +69,7 @@ instdec id(InstF, ascii);
 controller c(
     .Op(Op), 
     .Funct(Funct),
-    .rt(Rt),
+    .rt(Rt), .rs(Rs),
     .Jump(JumpD), 
     .RegWrite(RegWriteD), 
     .RegDst(RegDstD), 
@@ -86,6 +89,9 @@ controller c(
     .jal(JalD), 
     .jr(JrD), 
     .bal(BalD)
+    .Invalid(NoInst),
+    .cp0Write(Cp0Write),
+    .cp0Read(Cp0Read)
 );
 
 datapath dp(
@@ -94,7 +100,7 @@ datapath dp(
     .PCF(PCF), .InstF(InstF),
     
     .Op(Op), .Funct(Funct),
-    .Rt(Rt),
+    .Rt(Rt), .Rs(Rs),
     .RegWriteD(RegWriteD),
     .DatatoRegD(DatatoRegD),
     .MemWriteD(MemWriteD),
@@ -116,6 +122,10 @@ datapath dp(
     .SignD(SignD),
     .StartDivD(StartDivD),
     .AnnulD(AnnulD),
+
+    .Invalid(NoInst),
+    .cp0Write(Cp0Write),
+    .cp0Read(Cp0Read),
     //--to sram--
     .MemEn(MemEn),
     .Sel(Sel),
