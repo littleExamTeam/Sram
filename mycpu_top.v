@@ -61,7 +61,7 @@ wire [31:0] ALUOutM, WriteDataM, ReadDataM;
 
 wire        RegWriteW;
 wire [4:0]  WriteRegW;
-wire [31:0] PCW, ResultW;
+wire [31:0] PCW, FinalResultW;
 
 wire [39:0] ascii;
 instdec id(InstF, ascii);
@@ -88,7 +88,7 @@ controller c(
     .ALUContr(ALUControlD),
     .jal(JalD), 
     .jr(JrD), 
-    .bal(BalD)
+    .bal(BalD),
     .Invalid(NoInst),
     .cp0Write(Cp0Write),
     .cp0Read(Cp0Read)
@@ -123,9 +123,9 @@ datapath dp(
     .StartDivD(StartDivD),
     .AnnulD(AnnulD),
 
-    .Invalid(NoInst),
-    .cp0Write(Cp0Write),
-    .cp0Read(Cp0Read),
+    .NoInstD(NoInst),
+    .Cp0WriteD(Cp0Write),
+    .Cp0ReadD(Cp0Read),
     //--to sram--
     .MemEn(MemEn),
     .Sel(Sel),
@@ -136,7 +136,7 @@ datapath dp(
     .PCW(PCW),
     .RegWriteW(RegWriteW),
     .WriteRegW(WriteRegW),
-    .ResultW(ResultW)
+    .FinalResultW(FinalResultW)
 );
 
 
@@ -157,6 +157,6 @@ assign ReadDataM        = data_sram_rdata;
 assign debug_wb_pc             = PCW;
 assign debug_wb_rf_wen         = {4{RegWriteW}};
 assign debug_wb_rf_wnum        = WriteRegW;
-assign debug_wb_rf_wdata       = ResultW;
+assign debug_wb_rf_wdata       = FinalResultW;
 
 endmodule

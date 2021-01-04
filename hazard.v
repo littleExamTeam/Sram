@@ -28,6 +28,8 @@ module hazard(
     input wire StartDivE,
     input wire DivReadyE,
 
+    input wire Cp0ReadE,
+
     output wire FlushE, StallE,
     output reg [1:0] ForwardAE, ForwardBE,
     output reg [1:0] ForwardHIE, ForwardLOE,
@@ -35,33 +37,37 @@ module hazard(
     //------------------------
 
     //mem stage
+    input wire [4:0] RtM,
     input wire [4:0] WriteRegM,
     input wire [1:0] DatatoRegM,
     input wire RegWriteM,
     input wire HIWriteM, LOWriteM,
     input wire [1:0] DatatoHIM, DatatoLOM,
     input wire JalM, BalM,
+    input wire Cp0ReadM,
     output wire StallM,
     output wire FlushM,
     //exc
-    input wire ExcptSignal,
+    input wire ExceptSignal,
     input wire [31:0] ExceptType,
     input wire [31:0] EPCM,
     output reg [31:0] NewPCM,
     //------------------------
 
     //writeback stage
+    input wire [4:0] RtW,
     input wire [4:0] WriteRegW,
     input wire [1:0] DatatoRegW,
     input wire RegWriteW,
     //add movedata inst oprand
     input wire HIWriteW, LOWriteW,
     input wire [1:0] DatatoHIW, DatatoLOW,
-    output wire StallW
+    input wire Cp0ReadW,
+    output wire StallW, FlushW
     //------------------------
 );
 
-wire LwStallD, BranchStallD, JumpStallD, DivStall;
+wire LwStallD, BranchStallD, JumpStallD, DivStall, Cp0StallD;
 wire MemtoRegD, MemtoRegE, MemtoRegM, MemtoRegW;
 
 //decode stage forwarding
@@ -90,7 +96,7 @@ always @(*) begin
     ForwardHILOJMD = 2'b00;
 
 
-    if(RsE != 0) begin
+    if(RsE != 0 & ~Cp0ReadM & ~Cp0ReadW) begin
         if(RsE == WriteRegM & RegWriteM)begin
             ForwardAE = 2'b10;
         end
@@ -98,7 +104,7 @@ always @(*) begin
             ForwardAE = 2'b01;
         end
     end
-    if(RtE != 0) begin
+    if(RtE != 0 & ~Cp0ReadM & ~Cp0ReadW) begin
         if(RtE == WriteRegM & RegWriteM)begin
             ForwardBE = 2'b10;
         end
@@ -213,19 +219,18 @@ assign MemtoRegM = DatatoRegM[1:1] & DatatoRegM[0:0];
 assign MemtoRegW = DatatoRegW[1:1] & DatatoRegW[0:0];
 
 //stalls
-assign LwStallD = MemtoRegE & (RtE == RsD | RtE == RtD);
-assign Cp0StallD = Cp0ReadE  & (RtE == RsD | RtE == RtD);
+assign LwStallD  = ~ExceptSignal & MemtoRegE & (RtE == RsD | RtE == RtD);
+assign Cp0StallD = ((Cp0ReadE  & (RtE == RsD | RtE == RtD)) |
+                    (Cp0ReadM  & (RtM == RsD | RtM == RtD)));
 
-assign BranchStallD = BranchD & 
+assign BranchStallD = ~ExceptSignal & BranchD & 
         (RegWriteE & (WriteRegE == RsD | WriteRegE == RtD) |
-         MemtoRegM & (WriteRegM == RsD | WriteRegM == RtD) |
-         MemtoRegW & (WriteRegW == RsD | WriteRegW == RtD));
+         MemtoRegM & (WriteRegM == RsD | WriteRegM == RtD));
 
-assign JumpStallD =  JrD & (RegWriteE & WriteRegE == RsD |
-                            MemtoRegM & WriteRegM == RsD |
-                            MemtoRegW & WriteRegW == RsD);
+assign JumpStallD = ~ExceptSignal & JrD & (RegWriteE & WriteRegE == RsD |
+                            MemtoRegM & WriteRegM == RsD);
 
-assign DivStall = StartDivE & ~DivReadyE;
+assign DivStall = ~ExceptSignal & StartDivE & ~DivReadyE;
 
 assign StallD = LwStallD | BranchStallD | JumpStallD | DivStall | Cp0StallD;
 assign StallF = StallD;
@@ -233,25 +238,24 @@ assign StallE = DivStall;
 assign StallM = 1'b0;
 assign StallW = 1'b0;
 
-assign FlushF = ExcptSignal;
-assign FlushD = ExcptSignal
-assign FlushE = LwStallD | BranchStallD | JumpStallD | ExcptSignal;
-assign FlushM = ExcptSignal;
+assign FlushF = ExceptSignal;
+assign FlushD = ExceptSignal;
+assign FlushE = LwStallD | BranchStallD | JumpStallD | Cp0StallD | ExceptSignal;
+assign FlushM = ExceptSignal;
+assign FlushW = ExceptSignal;
 
 //EPC
 always @(*) begin
-    if(ExcpetType == 1'b1) begin
-        case(ExceptType)
-            32'h00000001: NewPCM <= 32'hbfc00380;
-            32'h00000004: NewPCM <= 32'hbfc00380;
-            32'h00000005: NewPCM <= 32'hbfc00380;
-            32'h00000008: NewPCM <= 32'hbfc00380;
-            32'h00000009: NewPCM <= 32'hbfc00380;
-            32'h0000000a: NewPCM <= 32'hbfc00380;
-            32'h0000000c: NewPCM <= 32'hbfc00380;
-            32'h0000000e: NewPCM <= EPCM;
-            default:;
-        endcase
-    end
+    case(ExceptType)
+        32'h00000001: NewPCM <= 32'hbfc00380;
+        32'h00000004: NewPCM <= 32'hbfc00380;
+        32'h00000005: NewPCM <= 32'hbfc00380;
+        32'h00000008: NewPCM <= 32'hbfc00380;
+        32'h00000009: NewPCM <= 32'hbfc00380;
+        32'h0000000a: NewPCM <= 32'hbfc00380;
+        32'h0000000c: NewPCM <= 32'hbfc00380;
+        32'h0000000e: NewPCM <= EPCM;
+        default:;
+    endcase
 end
 endmodule

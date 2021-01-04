@@ -6,36 +6,36 @@ module main_dec(
     input wire [4:0] rt,
     input wire [4:0] rs,
     output wire jump, regwrite, regdst,
-    output wire alusrcA,//正常的话�??0
+    output wire alusrcA,//正常的话�???0
     output wire [1:0] alusrcB, //这里修改成两位是为了选择操作数，00 normal 01 Sign 10 UNsign
     output wire branch, memwrite, 
-    output wire [1:0] DatatoReg,//这里是去找写到寄存器中的�?? 11 mem 10 HI 01 LO 00 ALU  there need changed to 3bits for div and mult
+    output wire [1:0] DatatoReg,//这里是去找写到寄存器中的�??? 11 mem 10 HI 01 LO 00 ALU  there need changed to 3bits for div and mult
     output wire HIwrite,//这里是去寻找是否写HILO 直接传给HILO
-    output wire LOwrite, //选择写的是HI还是LO寄存�??? 0 LO 1 HI  信号传给HILO
-    output wire [1:0] DataToHI, //这里是因为乘除法器加上的信号�??00选ALU 01选乘�?? 10 选除�??
-    output wire [1:0] DataToLO,  //这里是因为乘除法器加上的信号�??00选ALU 01选乘�?? 10 选除�??
+    output wire LOwrite, //选择写的是HI还是LO寄存�???? 0 LO 1 HI  信号传给HILO
+    output wire [1:0] DataToHI, //这里是因为乘除法器加上的信号�???00选ALU 01选乘�??? 10 选除�???
+    output wire [1:0] DataToLO,  //这里是因为乘除法器加上的信号�???00选ALU 01选乘�??? 10 选除�???
     output wire Sign, //这个是乘除法的符号数
-    output wire startDiv, //乘除法的�??始信�??
+    output wire startDiv, //乘除法的�???始信�???
 
-    output wire annul, //乘除法取消信�??
+    output wire annul, //乘除法取消信�???
 //=====新加的关于跳转的指令=====
     output wire jal,
     output wire jr,
     output wire bal,
 //=====新加的关于跳转的指令===== 
 
-//=====异常添加的指令==========
-    //output reg eret,//这个是去控制pcSrc 选择从cp0出来的pc值 TODO:这里改成通路判断
-    output reg Invalid,  //1: 证明指令不在我们规划中 0：代表指令存在
-    output reg cp0Write, //这里是去判断是否这个周期要去更改cp0的值
-    output reg cp0Read  //这里是去判断下一个周期是否要去读cp0寄存器的值 TODO:这里记得在寄存器堆前面加个二选一 
-                        //这个值就是去控制着个寄存器二选一 
-//=====异常添加的指令==========
+//=====异常添加的指�?==========
+    //output reg eret,//这个是去控制pcSrc 选择从cp0出来的pc�? TODO:这里改成通路判断
+    output reg Invalid,  //1: 证明指令不在我们规划�? 0：代表指令存�?
+    output reg cp0Write, //这里是去判断是否这个周期要去更改cp0的�??
+    output reg cp0Read  //这里是去判断下一个周期是否要去读cp0寄存器的�? TODO:这里记得在寄存器堆前面加个二选一 
+                        //这个值就是去控制�?个寄存器二�?�一 
+//=====异常添加的指�?==========
 
 );
 
 reg [21:0] signals; //添加eret变成22???
-//TODO: 记得明天通路中需要修改这个位�?? 12.30 晚上 12 > 13
+//TODO: 记得明天通路中需要修改这个位�??? 12.30 晚上 12 > 13
 
 //assign {jump, regwrite, regdst, alusrcB[1:0], branch, memwrite, DatatoReg} = signals;
 assign {regwrite, DatatoReg[1:0], memwrite, alusrcA ,{alusrcB[1:1]}, {alusrcB[0:0]}, regdst, jump, branch,
@@ -107,6 +107,10 @@ always @(*) begin
             `EXE_JR: signals <= 22'b0_00_0_0_00_0_1_0_0_0_00_00_0_0_0_0_1_0;
             `EXE_JALR: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_0_0_0_0_1_0;
 //======jump===========
+//======SYS&&BREAK======
+            `EXE_SYSCALL: signals <= 22'b0;
+            `EXE_BREAK: signals <= 22'b0;
+//======SYS&&BREAK======
             //default: signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_000_000;
             default: Invalid <= 1'b1;
             
@@ -170,10 +174,7 @@ always @(*) begin
         `EXE_SW:signals <= 22'b0_00_1_0_01_0_0_0_0_0_00_00_0_0_0_0_0_0;
 //======load&&save======
 
-//======SYS&&BREAK======
-        `EXE_SYSCALL: signals <= 22'b0;
-        `EXE_BREAK: signals <= 22'b0;
-//======SYS&&BREAK======
+
 //{regwrite, DatatoReg[1:0], memwrite, alusrcA ,{alusrcB[1:1]}, {alusrcB[0:0]}, regdst, jump, branch,
         //HIwrite,LOwrite,DataToHI[1:0],DataToLO[1:0],Sign,startDiv,annul,jal,jr,bal}
 //======SPECIAL=========
@@ -184,11 +185,11 @@ always @(*) begin
             end else begin
                 case(rs)
                     5'b00000:begin
-                        signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_0_0_0_0_0_0;
+                        signals <= 22'b1_00_0_0_00_0_0_0_0_0_00_00_0_0_0_0_0_0;
                         cp0Read <= 1'b1;
                     end//MFC0
                     5'b00100: begin
-                        signals <= 22'b0_00_0_0_00_1_0_0_0_0_00_00_0_0_0_0_0_0;
+                        signals <= 22'b0_00_0_0_00_0_0_0_0_0_00_00_0_0_0_0_0_0;
                         cp0Write <= 1'b1;
                     end//MTC0
                     default :Invalid <= 1'b1;
@@ -214,12 +215,12 @@ module controller(
     output wire Branch, MemWrite, 
     output wire [1:0]DatatoReg,
     output wire HIwrite,LOwrite,
-    output wire [1:0] DataToHI, //这里是因为乘除法器加上的信号�??00选ALU 01选乘�?? 10 选除�??
-    output wire [1:0] DataToLO,  //这里是因为乘除法器加上的信号�??00选ALU 01选乘�?? 10 选除�??
+    output wire [1:0] DataToHI, //这里是因为乘除法器加上的信号�???00选ALU 01选乘�??? 10 选除�???
+    output wire [1:0] DataToLO,  //这里是因为乘除法器加上的信号�???00选ALU 01选乘�??? 10 选除�???
     output wire Sign, //这个是乘除法的符号数
-    output wire startDiv, //乘除法的�??始信�??
+    output wire startDiv, //乘除法的�???始信�???
 
-    output wire annul, //乘除法取消信�??
+    output wire annul, //乘除法取消信�???
     output wire [7:0] ALUContr,
 //=====新加的关于跳转的指令=====
     output wire jal,
@@ -227,12 +228,12 @@ module controller(
     output wire bal,
 //=====新加的关于跳转的指令=====  
 
-//=====异常添加的指令==========
-    //output reg eret,//这个是去控制pcSrc 选择从cp0出来的pc值 
-    output reg Invalid, //1: 证明指令不在我们规划中 0：代表指令存在
-    output reg cp0Write,
-    output reg cp0Read
-//=====异常添加的指令==========
+//=====异常添加的指�?==========
+    //output reg eret,//这个是去控制pcSrc 选择从cp0出来的pc�? 
+    output wire Invalid, //1: 证明指令不在我们规划�? 0：代表指令存�?
+    output wire cp0Write,
+    output wire cp0Read
+//=====异常添加的指�?==========
 
 
 );

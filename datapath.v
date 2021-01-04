@@ -1,13 +1,13 @@
 `timescale 1ns / 1ps
 
 
-//TODO: 1.4 要做的事情
+//TODO: 1.4 要做的事�???????
 //1.把cp0放在通路外面，读值在第二周期，存值在第五周期
 //2.exception得到异常地址
 //3.except八位后两位分别是ADEL，ADES
 //4.有异常需要刷新流水线
-//5.syscall后面接上div就会有问题 需要改一下pc接口那里
-//6.int_i 这里是硬件中断
+//5.syscall后面接上div就会有问�??????? �???????要改�???????下pc接口那里
+//6.int_i 这里是硬件中�???????
 
 module datapath(
     input wire clk, rst,
@@ -62,13 +62,13 @@ module datapath(
     output wire [31:0] PCW,
     output wire        RegWriteW,
     output wire [4:0]  WriteRegW,
-    output wire [31:0] ResultW
+    output wire [31:0] FinalResultW
     //-----------------------------------------------
 );
 wire [31:0] PC;
 //-----fetch stage-----------------------------------
 wire [31:0] PCPlus4F;
-wire StallF;
+wire StallF, FlushF;
 //--exc--
 wire [7:0] ExceptF;
 wire Adel1F;
@@ -108,7 +108,7 @@ wire        StallD, FlushD;
 //--exc--
 wire [7:0] ExceptD;
 wire Adel1D, IsSlotD;
-wire Break, Syscall;
+wire Eret, Break, Syscall;
 //-------------------------------------------------------
 
 
@@ -149,6 +149,7 @@ wire [31:0] RegValue;
 wire [31:0] WriteDataE;
 wire [31:0] ALUOutTemp;
 wire [31:0] PCPlus8E;
+wire Zero;
 //--mult div--
 wire [31:0] MultHIE, MultLOE;
 wire [31:0] DivHIE, DivLOE;
@@ -160,6 +161,7 @@ wire [1:0] ForwardMultE, ForwardDivE;
 wire FlushE, StallE;
 //--exc--
 wire [7:0] ExceptE;
+wire Cp0ReadE, Cp0WriteE;
 wire Adel1E, IsSlotE;
 wire Overflow;
 //----------------------------------------------------------
@@ -168,6 +170,7 @@ wire Overflow;
 //-----mem stage--------------------------------------------
 wire [31:0] PCM;
 wire [31:0] EPCM;
+wire [4:0] RdM;
 //--signals--
 wire       RegWriteM;
 wire [1:0] DatatoRegM;
@@ -186,25 +189,31 @@ wire [31:0] LODataM;
 wire [31:0] MultHIM, MultLOM;
 wire [31:0] DivHIM, DivLOM;
 //--regs info--
+wire [4:0]  RtM;
 wire [4:0]  WriteRegM; 
 //--mem--
 //wire [3:0]  Sel;
 wire [31:0] FinalDataM;
 wire [31:0] RegDataM;
 //--harzard--
-wire StallM;
+wire StallM, FlushM;
 //--exc--
+wire [31:0] NewPCM;
+wire [31:0] ExceptType;
 wire [31:0] BadAddr;
 wire [31:0] Cp0DataM;
 wire [31:0] Cp0Status;
 wire [31:0] Cp0Cause;
 wire [7:0] ExceptM;
+wire Cp0WriteM, Cp0ReadM;
+wire ExceptSignal;
 wire IsSlotM;
 wire Adel1M, Adel2M, AdelM, AdesM;
 //----------------------------------------------------------
 
 
 //-----writeback stage--------------------------------------
+wire [4:0] RtW;
 //--signals
 wire [1:0] DatatoRegW;
 wire       HIWriteW;
@@ -213,6 +222,7 @@ wire [1:0] DatatoHIW;
 wire [1:0] DatatoLOW;
 //--data--
 wire [31:0] ReadDataW;
+wire [31:0] ResultW;
 wire [31:0] HIDataW;
 wire [31:0] LODataW;
 wire [31:0] ALUOutW;
@@ -220,14 +230,15 @@ wire [31:0] ALUOutW;
 wire [31:0] MultHIW, MultLOW;
 wire [31:0] DivHIW, DivLOW;
 //--harzard--
-wire StallW;
+wire StallW, FlushW;
 //--exc--
 wire [31:0] Cp0DataW;
+wire Cp0ReadW;
 //----------------------------------------------------------
 
 
 //-----next pc----------------------------------------------
-mux3 #(32) PCMux(PCPlus4F, PCBranchD, PCJumpD, PCSrcD, PC);
+mux4 #(32) PCMux(PCPlus4F, PCBranchD, PCJumpD, NewPCM, PCSrcD, PC);
 //----------------------------------------------------------
 
 
@@ -239,8 +250,8 @@ assign Adel1F = (PCF[1:0] == 2'b00) ? 1'b0 : 1'b1;
 assign IsSlotF = BranchSignal | JumpSignal;
 assign ExceptF[7] = Adel1F;
 //----------------------------------------------------------
-
-
+//               1a    0e
+//010000 00000 11010 01110 00000000 000
 //-----decode stage-----------------------------------------
 flopenrc #(32)D1(clk, rst, ~StallD, FlushD, InstF, InstD);
 flopenrc #(32)D2(clk, rst, ~StallD, FlushD, PCPlus4F, PCPlus4D);
@@ -254,14 +265,15 @@ assign RtD   = InstD[20:16];
 assign RdD   = InstD[15:11];
 assign Funct = InstD[5:0];
 assign Rt    = RtD;
+assign Rs    = RsD;
 
 assign SaD = {27'b0, InstD[10:6]};
 
 assign JumpSignal   = JumpD | JalD | JrD;
 assign BranchSignal = BranchD | BalD;
 
-assign PCSrcD[0:0] = BranchSignal & EqualD;
-assign PCSrcD[1:1] = JumpSignal;
+assign PCSrcD[0:0] = (BranchSignal & EqualD) | ExceptSignal;
+assign PCSrcD[1:1] = JumpSignal | ExceptSignal;
 
 //--regs--
 regfile Regs(clk, RegWriteW, RsD, RtD, WriteRegW, FinalResultW, DataAD, DataBD);
@@ -280,7 +292,6 @@ mux3 #(32)HILOBMMux(TempCmpB2, HIDataM, LODataM, ForwardHILOBMD, CmpB);
 eqcmp Cmp(CmpA, CmpB, Op, RtD, EqualD);
 
 //assign FlushD = PCSrcD[0:0] | PCSrcD[1:1];
-assign FlushD = 1'b0;
 //--ext imm--
 signext Se(InstD[15:0], SignImmD);
 zeroext Ze(InstD[15:0], ZeroImmD);
@@ -332,17 +343,17 @@ flopenrc #(32)E13(clk, rst, ~StallE, FlushE, PCD, PCE);
 flopenrc #(10)E14(clk, rst, ~StallE, FlushE, {ExceptD, Adel1D, IsSlotD}, {ExceptE, Adel1E, IsSlotE});
 //--alu forwarding--
 mux2  #(5) RegMux1(RtE, RdE, RegDstE, WriteRegTemp);
-mux3 #(32) ForwardAMux(DataAE, ResultW, ALUOutM, ForwardAE, RegValue);
-mux3 #(32) ForwardBMux(DataBE, ResultW, ALUOutM, ForwardBE, WriteDataE);
+mux3 #(32) ForwardAMux(DataAE, FinalResultW, ALUOutM, ForwardAE, RegValue);
+mux3 #(32) ForwardBMux(DataBE, FinalResultW, ALUOutM, ForwardBE, WriteDataE);
 //--alu src--
 mux2 #(32) AluSrcAMux(RegValue, SaE, ALUSrcAE, SrcAE);
 mux3 #(32) AluSrcBMux(WriteDataE, SignImmE, ZeroImmE, ALUSrcBE, SrcBE);
 //--hilo forwarding--
-mux3 #(32) ForwardHIMux(HIDataE, ALUOutM, ResultW, ForwardHIE, TempHIData1E);
+mux3 #(32) ForwardHIMux(HIDataE, ALUOutM, FinalResultW, ForwardHIE, TempHIData1E);
 mux3 #(32) ForwardHIMultMux(TempHIData1E, MultHIM, MultHIW, ForwardMultE, TempHIData2E);
 mux3 #(32) ForwardHIDivMux(TempHIData2E, DivHIM, DivHIW, ForwardDivE, NewHIDataE);
 
-mux3 #(32) ForwardLOMux(LODataE, ALUOutM, ResultW, ForwardLOE, TempLOData1E);
+mux3 #(32) ForwardLOMux(LODataE, ALUOutM, FinalResultW, ForwardLOE, TempLOData1E);
 mux3 #(32) ForwardLOMultMux(TempLOData1E, MultLOM, MultLOW, ForwardMultE, TempLOData2E);
 mux3 #(32) ForwardLODivMux(TempLOData2E, DivLOM, DivLOW, ForwardDivE, NewLODataE);
 //--branch jump--
@@ -357,38 +368,42 @@ div Div(clk, rst, SignE, SrcAE, SrcBE, DivStart, AnnulE, {DivHIE, DivLOE}, DivRe
 assign ExceptE[2] = Overflow;
 //-----------------------------------------------------------
 
-
+//000100 00000 00000 1111111111111111
+//11111 11111 1111 111111111111111100
+//10111 11111 0001 001100100111001000
 //-----mem stage---------------------------------------------
 //TODO:change the bits of signal
-flopenrc  #(22)M1(clk, rst, ~StallM,,FlushM
+flopenrc  #(22)M1(clk, rst, ~StallM, FlushM,
     {RegWriteE,DatatoRegE,MemWriteE,ALUControlE,JalE,BalE,
     HIWriteE,LOWriteE,DatatoHIE,DatatoLOE,Cp0WriteE,Cp0ReadE},
     {RegWriteM,DatatoRegM,MemWriteM,ALUControlM,JalM,BalM,
     HIWriteM,LOWriteM,DatatoHIM,DatatoLOM,Cp0WriteM,Cp0ReadM});
-flopenrc #(32)M2(clk, rst, ~StallM, FlushM,ALUOutE, ALUOutM);
-flopenrc #(32)M3(clk, rst, ~StallM, FlushM,WriteDataE, RegDataM);
-flopenrc  #(5)M4(clk, rst, ~StallM, FlushM,WriteRegE, WriteRegM);
-flopenrc #(32)M5(clk, rst, ~StallM, FlushM,NewHIDataE, HIDataM);
-flopenrc #(32)M6(clk, rst, ~StallM, FlushM,NewLODataE, LODataM);
-flopenrc #(32)M7(clk, rst, ~StallM, FlushM,MultHIE, MultHIM);
-flopenrc #(32)M8(clk, rst, ~StallM, FlushM,MultLOE, MultLOM);
-flopenrc #(32)M9(clk, rst, ~StallM, FlushM,DivHIE, DivHIM);
-flopenrc#(32)M10(clk, rst, ~StallM, FlushM,DivLOE, DivLOM);
-flopenrc#(32)M11(clk, rst, ~StallM, FlushM,PCE, PCM);
+flopenrc #(32)M2(clk, rst, ~StallM, FlushM, ALUOutE, ALUOutM);
+flopenrc #(32)M3(clk, rst, ~StallM, FlushM, WriteDataE, RegDataM);
+flopenrc  #(5)M4(clk, rst, ~StallM, FlushM, WriteRegE, WriteRegM);
+flopenrc #(32)M5(clk, rst, ~StallM, FlushM, NewHIDataE, HIDataM);
+flopenrc #(32)M6(clk, rst, ~StallM, FlushM, NewLODataE, LODataM);
+flopenrc #(32)M7(clk, rst, ~StallM, FlushM, MultHIE, MultHIM);
+flopenrc #(32)M8(clk, rst, ~StallM, FlushM, MultLOE, MultLOM);
+flopenrc #(32)M9(clk, rst, ~StallM, FlushM, DivHIE, DivHIM);
+flopenrc#(32)M10(clk, rst, ~StallM, FlushM, DivLOE, DivLOM);
+flopenrc#(32)M11(clk, rst, ~StallM, FlushM, PCE, PCM);
 //--exc--
-flopenr#(10)M12(clk, rst, ~StallM, {ExceptE, Adel1E, IsSlotE}, {ExceptM, Adel1M, IsSlotM});
-flopenr #(5)M13(clk, rst, ~StallM, RdE, RdM);
-flopenr#(32)M14(clk, rst, ~StallM, Cp0DataM, Cp0DataW);
+flopenrc#(10)M12(clk, rst, ~StallM, FlushM, {ExceptE, Adel1E, IsSlotE}, {ExceptM, Adel1M, IsSlotM});
+flopenrc #(5)M13(clk, rst, ~StallM, FlushM, RdE, RdM);
+flopenrc #(5)M14(clk, rst, ~StallM, FlushM, RtE, RtM);
+flopenrc#(32)M15(clk, rst, ~StallM, FlushM, Cp0DataM, Cp0DataW);
 //--exc--
 assign AdelM = Adel1M | Adel2M;
-assign ExceptM [4] = 1'b0;
 assign ExceptM [1] = AdelM;
 assign ExceptM [0] = AdesM;
-assign ExcptSignal = (ExceptM == 8'b0) ? 0 : 1;
-assign BadAddr = AdesM ? ALUOutM : PCM;
 
-assign MemEn = DatatoRegM[0] & DatatoRegM[1] | MemWriteM;
-ByteSel BS(ALUOutM, RegDataM, ALUControlM, Sel, WriteDataM, Adel2M, AdeSM);
+
+assign ExceptSignal = (ExceptType != 32'b0) ? 1 : 0;
+assign BadAddr = (Adel2M | AdesM) ? ALUOutM : PCM;
+
+assign MemEn = (DatatoRegM[0] & DatatoRegM[1] | MemWriteM) & ~ExceptSignal;
+ByteSel BS(ALUOutM, RegDataM, ALUControlM, Sel, WriteDataM, Adel2M, AdesM);
 GetReadData GRD(ALUOutM, ReadDataM, ALUControlM, FinalDataM);
 //--exc--
 cp0_reg cp0(
@@ -406,7 +421,7 @@ cp0_reg cp0(
     .is_in_delayslot_i(IsSlotM),
     .bad_addr_i(BadAddr),
 
-    .data_o(Cp0Data),
+    .data_o(Cp0DataM),
     .count_o(),
     .compare_o(),
     .status_o(Cp0Status),
@@ -424,7 +439,7 @@ exception exc(
     .rst(rst),
     .except(ExceptM), 
     .adel(AdelM),
-    .ades(AdeSM),
+    .ades(AdesM),
     .cp0_states(Cp0Status),
     .cp0_cause(Cp0Cause),
     .excepttype(ExceptType)
@@ -434,9 +449,9 @@ exception exc(
 
 //-----writeback stage----------------------------------------
 //TODO:change the bits of signal
-flopenrc  #(9)W1(clk, rst, ~StallW, FlushW
-    {RegWriteM,DatatoRegM,HIWriteM,LOWriteM,DatatoHIM,DatatoLOM},
-    {RegWriteW,DatatoRegW,HIWriteW,LOWriteW,DatatoHIW,DatatoLOW});
+flopenrc  #(10)W1(clk, rst, ~StallW, FlushW,
+    {RegWriteM,DatatoRegM,HIWriteM,LOWriteM,DatatoHIM,DatatoLOM,Cp0ReadM},
+    {RegWriteW,DatatoRegW,HIWriteW,LOWriteW,DatatoHIW,DatatoLOW,Cp0ReadW});
 flopenrc #(32)W2(clk, rst, ~StallW, FlushW, FinalDataM, ReadDataW);
 flopenrc #(32)W3(clk, rst, ~StallW, FlushW, ALUOutM, ALUOutW);
 flopenrc  #(5)W4(clk, rst, ~StallW, FlushW, WriteRegM, WriteRegW);
@@ -447,7 +462,7 @@ flopenrc #(32)W8(clk, rst, ~StallW, FlushW, MultLOM, MultLOW);
 flopenrc #(32)W9(clk, rst, ~StallW, FlushW, DivHIM, DivHIW);
 flopenrc #(32)W10(clk, rst, ~StallW, FlushW, DivLOM, DivLOW);
 flopenrc #(32)W11(clk, rst, ~StallW, FlushW, PCM, PCW);
-
+flopenrc #(32)W12(clk, rst, ~StallW, FlushW, RtM, RtW);
 mux4 #(32) DatatoRegMux (ALUOutW, LODataW, HIDataW, ReadDataW, DatatoRegW, ResultW);
 mux3 #(32) DatatoHIMux  (ALUOutW, MultHIW, DivHIW, DatatoHIW, HIIn);
 mux3 #(32) DatatoLOMux  (ALUOutW, MultLOW, DivLOW, DatatoLOW, LOIn);
@@ -475,36 +490,43 @@ hazard h(
     WriteRegE,
     DatatoRegE,
     RegWriteE,
+
     JalE, BalE,
 
     StartDivE,
     DivReadyE,
+
+    Cp0ReadE,
 
     FlushE, StallE,
     ForwardAE, ForwardBE,
     ForwardHIE, ForwardLOE,
     ForwardMultE, ForwardDivE,
     //mem stage
+    RtM,
     WriteRegM,
     DatatoRegM,
     RegWriteM,
     HIWriteM, LOWriteM,
     DatatoHIM, DatatoLOM,
     JalM, BalM,
+    Cp0ReadM,
     StallM,
     FlushM,
 
-    ExcptSignal,
-    ExcptType,
+    ExceptSignal,
+    ExceptType,
     EPCM,
     NewPCM,
     //writeback stage
+    RtW,
     WriteRegW,
     DatatoRegW,
     RegWriteW,
     HIWriteW, LOWriteW,
     DatatoHIW, DatatoLOW,
-    StallW
+    Cp0ReadW,
+    StallW, FlushW
 );
 
 endmodule
