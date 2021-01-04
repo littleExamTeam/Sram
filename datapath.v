@@ -44,7 +44,7 @@ module datapath(
     input  wire       StartDivD,
     input  wire       AnnulD,
     //--exc--
-    input  wire       NoInst;
+    input  wire       NoInst,
     //-----------------------------------------------
 
     //-----mem stage---------------------------------

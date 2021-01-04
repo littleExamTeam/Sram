@@ -180,15 +180,15 @@ always @(*) begin
         6'b010000:begin
             if(funct == 6'b011000)begin
                 //eret <= 1'b1;
-                signals <= 22'b0;
+                signals <= {1'b1,21'b0};
             end else begin
                 case(rs)
                     5'b00000:begin
-                        signals <= 22'b0_00_0_0_00_0_0_0_0_0_00_00_0_0_0_0_0_0;
+                        signals <= 22'b1_00_0_0_00_1_0_0_0_0_00_00_0_0_0_0_0_0;
                         cp0Read <= 1'b1;
                     end//MFC0
                     5'b00100: begin
-                        signals <= 22'b0_00_0_0_00_0_0_0_0_0_00_00_0_0_0_0_0_0;
+                        signals <= 22'b0_00_0_0_00_1_0_0_0_0_00_00_0_0_0_0_0_0;
                         cp0Write <= 1'b1;
                     end//MTC0
                     default :Invalid <= 1'b1;
