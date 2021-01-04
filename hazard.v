@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 module hazard(
     //fetch stage
-    output wire StallF,
+    output wire StallF, FlushF,
 
     //decode stage
     input wire [4:0] RsD, RtD,
@@ -10,7 +10,7 @@ module hazard(
 
     input wire JrD,
 
-    output wire StallD,
+    output wire StallD, FlushD,
     output wire ForwardAD, ForwardBD, ForwardJrD,
     output reg  [1:0] ForwardHILOAED, ForwardHILOAMD,
     output reg  [1:0] ForwardHILOBED, ForwardHILOBMD,
@@ -42,6 +42,7 @@ module hazard(
     input wire [1:0] DatatoHIM, DatatoLOM,
     input wire JalM, BalM,
     output wire StallM,
+    output wire FlushM,
     //exc
     input wire ExcptSignal,
     input wire [31:0] ExceptType,
@@ -213,6 +214,7 @@ assign MemtoRegW = DatatoRegW[1:1] & DatatoRegW[0:0];
 
 //stalls
 assign LwStallD = MemtoRegE & (RtE == RsD | RtE == RtD);
+assign Cp0StallD = Cp0ReadE  & (RtE == RsD | RtE == RtD);
 
 assign BranchStallD = BranchD & 
         (RegWriteE & (WriteRegE == RsD | WriteRegE == RtD) |
@@ -225,7 +227,7 @@ assign JumpStallD =  JrD & (RegWriteE & WriteRegE == RsD |
 
 assign DivStall = StartDivE & ~DivReadyE;
 
-assign StallD = LwStallD | BranchStallD | JumpStallD | DivStall;
+assign StallD = LwStallD | BranchStallD | JumpStallD | DivStall | Cp0StallD;
 assign StallF = StallD;
 assign StallE = DivStall;
 assign StallM = 1'b0;

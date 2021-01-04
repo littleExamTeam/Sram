@@ -457,14 +457,14 @@ mux3 #(32) DatatoLOMux  (ALUOutW, MultLOW, DivLOW, DatatoLOW, LOIn);
 //hazard
 hazard h(
     //fetch stage
-    StallF,
+    StallF, FlushF,
     //decode stage
     RsD, RtD,
     BranchD,
     DatatoRegD,
     JrD,
 
-    StallD,
+    StallD, FlushD,
     ForwardAD, ForwardBD, ForwardJrD,
     ForwardHILOAED, ForwardHILOAMD,
     ForwardHILOBED, ForwardHILOBMD,
@@ -492,6 +492,12 @@ hazard h(
     DatatoHIM, DatatoLOM,
     JalM, BalM,
     StallM,
+    FlushM,
+
+    ExcptSignal,
+    ExcptType,
+    EPCM,
+    NewPCM,
     //writeback stage
     WriteRegW,
     DatatoRegW,
